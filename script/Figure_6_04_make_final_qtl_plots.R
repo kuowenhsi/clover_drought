@@ -6,9 +6,9 @@ library(lme4)
 # ploting the final combined plots
 
 total_LOD_tb <- bind_rows(
-  read_csv("leaf_area_LOD_tb_20240303.csv") %>% mutate(trait = (paste("leaf_area", trait, sep = "_"))),
-  read_csv("flower_count_LOD_tb_20240303.csv") %>% mutate(trait = paste("flower_count", trait, sep = "_")),
-  read_csv("dry_weight_LOD_tb_20240303.csv")%>% mutate(trait = str_replace(trait, "w", "weight"))
+  read_csv("./data/leaf_area_LOD_tb_20240303.csv") %>% mutate(trait = (paste("leaf_area", trait, sep = "_"))),
+  read_csv("./data/flower_count_LOD_tb_20240303.csv") %>% mutate(trait = paste("flower_count", trait, sep = "_")),
+  read_csv("./data/dry_weight_LOD_tb_20240303.csv")%>% mutate(trait = str_replace(trait, "w", "weight"))
 )%>%
   mutate(trait = str_remove(str_remove(trait, "_Control"), "_Drought"))%>%
   mutate(trait = factor(trait, levels = c("Genetic distance", "flower_count", "leaf_area_w_2", "leaf_area_w_3", "leaf_area_w_4", "leaf_area_w_5", "shoot_weight",  "root_weight")))
@@ -33,7 +33,7 @@ p <- ggplot(data = total_LOD_tb, aes(x = trait, y = mid_pos))+
   theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.5), panel.grid.minor.x = element_blank(), panel.grid.major.y = element_blank(), legend.position = c(0.9, 0.9), legend.title = element_blank(), plot.background = element_rect(fill = "white", color = NA))
 
 p  
-ggsave("Total_BLUP_p0.1_20240304.png", width = 8, height = 6)
+ggsave("./figures/Total_BLUP_p0.1_20240304.png", width = 8, height = 6)
 
 plotPXG(DG_F3_data, "drTriRepe4Chr4:42683586", pheno.col=6)
 

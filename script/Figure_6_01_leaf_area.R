@@ -6,7 +6,6 @@ library(future.apply)
 library(progressr)
 library(ASMap)
 library(lme4)
-library(ggh4x)
 
 # Set up future to use multicore parallelism
 plan(multisession)
@@ -16,13 +15,12 @@ handlers(global = TRUE)
 
 setwd("/Users/kuowenhsi/OneDrive - Washington University in St. Louis/Drought_F3_paper/clover_drought")
 
-
-DG_F3_data <- read.cross("csv", "/Users/kuowenhsi/OneDrive - Washington University in St. Louis/leaf_mark_paper/VCF_bwa/", "bwa_DG_F3_DP0_F3_m0.5_hardfilter_pre_imputed_homo_maf0.2_hww0.01_LM.csv", estimate.map=FALSE,
+DG_F3_data <- read.cross("csv", "./data", "bwa_DG_F3_DP0_F3_m0.5_hardfilter_pre_imputed_homo_maf0.2_hww0.01_LM.csv", estimate.map=FALSE,
                          genotypes=c("AA", "AB", "BB"), alleles = c("A", "B"))
 
 ###############################
 
-other_data <- read.cross(file = "DG_F3_physical_order_LM_pheno_20240219.csv", dir = "/Users/kuowenhsi/OneDrive - Washington University in St. Louis/leaf_mark_paper/",format = "csv", estimate.map=FALSE, genotypes=c("AA", "AB", "BB"), alleles = c("A", "B"))
+other_data <- read.cross("csv", "./data", "DG_F3_physical_order_LM_pheno_20240219.csv", estimate.map=FALSE, genotypes=c("AA", "AB", "BB"), alleles = c("A", "B"))
 
 other_pheno <- other_data$pheno%>%select(1:4)
 
@@ -37,22 +35,36 @@ DG_F3_data <- DG_F3_data %>%
   calc.genoprob(step=0, error.prob=0.001,map.function=c("kosambi")) %>%
   sim.geno(step=0, n.draws=16, error.prob=0.001)
 
-dw_data <- read_xlsx("./data/total_DW_20220625.xlsx")%>%
-  mutate(plant_group = rep(c(1, 2, 1, 2, 1, 2), each = 300))%>%
-  mutate(Trt_group_rep = paste(Trt, plant_group, Rep, sep = "_"))%>%
-  mutate(shoot_w = Shoot_gross - Shoot_bag, root_w = Root_gross - Root_bag)%>%
-  select(Genotype = unique_F3_id, Trt, Replication = Rep, drymass_shoot = shoot_w, drymass_root = root_w)%>%
-  mutate(drymass_root = drymass_root + abs(min(drymass_root, na.rm = TRUE)))%>%
-  # mutate(shoot_w = log(shoot_w + 1), root_w = log(root_w + 1))%>%
-  pivot_wider(names_from = c("Trt"), values_from = c("drymass_shoot", "drymass_root"))%>%
-  mutate(Replication = as.factor(Replication))
 
-write_csv(dw_data, "./data/drymass_shootroot_raw_20240826.csv")
+lf_data_blup <- read_tsv("./data/combined_imputed_leaf_area_20230518.tsv")%>%
+  arrange(date_binned, ID)%>%
+  mutate(uni_rep = rep(1:6, each = 1500))%>%
+  select(c(2,5,6, 9, 11,12,13))%>%
+  left_join(select(filter(., exp_week == 1), unique_F3_id, Trt, uni_rep, leaf_area_w1 = leaf_area, Rep), by = c("unique_F3_id", "Trt", "uni_rep", "Rep"))%>%
+  mutate(Relative_growth = leaf_area - leaf_area_w1, exp_week = paste("W", exp_week, sep = ""))%>%
+  select(Genotype = unique_F3_id, Trt, uni_rep, exp_week, Relative_growth)%>%
+  pivot_wider(names_from = c("exp_week", "Trt"), values_from = c("Relative_growth"))%>%
+  rename_at(.vars = vars(contains("W")), .funs = function(x){str_c("leaf_", x)})%>%
+  rename(Replication = uni_rep)
 
-str(dw_data)
+write_csv(lf_data_blup, "./data/relative_leafarea_raw_20240826.csv")
 
+hist(lf_data_blup$leaf_W3_Drought)
+hist(sqrt(lf_data_blup$leaf_W3_Drought))
+hist(log(lf_data_blup$leaf_W3_Drought + 1))
+
+hist(lf_data_blup$leaf_W3_Control)
+hist(sqrt(lf_data_blup$leaf_W3_Control))
+hist(log(lf_data_blup$leaf_W3_Control + 1))
+
+
+shapiro.test(lf_data_blup$leaf_W3_Drought)
+shapiro.test(sqrt(lf_data_blup$leaf_W3_Drought))
+shapiro.test(log(lf_data_blup$leaf_W3_Drought + 1))
+
+unique(lf_data_blup$date_binned)
 # List of phenotype columns
-phenotype_cols <- names(dw_data)[!(names(dw_data) %in% c("Genotype", "Subgroup", "Replication"))]
+phenotype_cols <- names(lf_data_blup)[!(names(lf_data_blup) %in% c("Genotype", "uni_rep", "Replication"))]
 
 # Initialize an empty list to store BLUPs for each phenotype
 blups_list <- list()
@@ -62,7 +74,9 @@ for (phenotype in phenotype_cols) {
   # phenotype = "Control_w_2"
   
   # Fit the mixed model
-  model <- lmer(as.formula(paste(phenotype, "~ (1|Replication) + (1|Genotype)")), data = dw_data)
+  model <- lmer(as.formula(paste(phenotype, "~ (1|uni_rep) + (1|Genotype)")), data = lf_data_blup )
+  
+  print(VarCorr(model))
   
   # Calculate BLUPs for genotypes
   blups <- ranef(model)[["Genotype"]]
@@ -80,10 +94,12 @@ for (phenotype in phenotype_cols) {
 # Assuming that the genotype order is consistent across all BLUPs calculations
 combined_blups <- bind_cols(blups_list)%>%
   rownames_to_column(var = "Genotype")
+  
+write_csv(combined_blups, "./clover_drought/data/leaf_area_BLUPs_20240825.csv")
 
-write_csv(combined_blups, "./data/dry_weight_log_BLUPs_20240826.csv")
-#######################
-
+# DG_F3_pheno <- DG_F3_data$pheno %>%
+#   left_join(lf_data, by = c("Genotype" = "unique_F3_id"))%>%
+#   left_join(other_pheno, by = "Genotype")
 
 DG_F3_pheno <- DG_F3_data$pheno %>%
   left_join(combined_blups, by = c("Genotype"))%>%
@@ -93,20 +109,19 @@ DG_F3_pheno <- DG_F3_data$pheno %>%
 DG_F3_data$pheno <- DG_F3_pheno
 
 summary(DG_F3_data)
-names(DG_F3_pheno)[2:5]
+names(DG_F3_pheno)
+names(DG_F3_pheno)[2:9]
 
 qtl_results_list <- list()
-for (i in names(DG_F3_pheno)[2:5]){
+for (i in names(DG_F3_pheno)[2:9]){
   qtl_results_list[[i]] <- scanone(DG_F3_data, pheno.col=i, model="normal", method = "hk")
-  plot(qtl_results_list[[i]], ylab="LOD score", alternate.chrid=TRUE, main = paste0("Biomass ", i))
+  plot(qtl_results_list[[i]], ylab="LOD score", alternate.chrid=TRUE, main = paste0("Leaf area ", i))
 }
-
-
 
 length(qtl_results_list)
 
 qtl_sig_list <- list()
-data_list <- names(DG_F3_pheno)[2:5]
+data_list <- names(DG_F3_pheno)[2:9]
 # Set up the progress bar
 with_progress({
   p <- progressor(along = data_list)
@@ -118,26 +133,34 @@ with_progress({
   })
 })
 
-names(qtl_sig_list) <- names(DG_F3_pheno)[2:5]
+names(qtl_sig_list) <- names(DG_F3_pheno)[2:9]
 
 length(qtl_sig_list)
+length(qtl_results_list)
 lapply(qtl_results_list, summary)
 lapply(qtl_sig_list, summary)
+qtl_sig_list[[1]]
 
+names(qtl_sig_list)
 qtl_aboveSig_list <- list()
-for (i in 1:4){
+for (i in 1:8){
   qtl_aboveSig_list[[i]] <- summary(qtl_results_list[[i]], perms=qtl_sig_list[[i]], alpha=0.1, pvalues=TRUE)
 }
 
-names(qtl_aboveSig_list) <- names(DG_F3_pheno)[2:5]
+# qtl_aboveSig_list <- list()
+# for (i in 1:13){
+#   qtl_aboveSig_list[[i]] <- summary(qtl_results_list[[i]], threshold = 3.5)
+# }
+
+names(qtl_aboveSig_list) <- names(DG_F3_pheno)[2:9]
 length(qtl_aboveSig_list)
 qtl_aboveSig_list
 
 #############################
 
 
-LOD_list <- vector(mode = "list", length = 4)
-names(LOD_list) <- names(DG_F3_pheno)[2:5]
+LOD_list <- vector(mode = "list", length = 8)
+names(LOD_list) <- names(DG_F3_pheno)[2:9]
 for (i in names(LOD_list)){
   
   significant_peaks <- qtl_aboveSig_list[[i]]
@@ -162,7 +185,7 @@ for (i in names(LOD_list)){
     
     # Store the result
     ci_results <- bind_rows(ci_results, tibble(low_marker = rownames(ci_result)[[1]], mid_marker = rownames(ci_result)[[2]], high_marker=rownames(ci_result)[[3]], low_chr=ci_result$chr[[1]], mid_chr=ci_result$chr[[2]], high_chr=ci_result$chr[[3]], low_pos=ci_result$pos[[1]], mid_pos=ci_result$pos[[2]], high_pos=ci_result$pos[[3]], low_lod=ci_result$lod[[1]], mid_lod=ci_result$lod[[2]], high_lod=ci_result$lod[[3]], additive_effect = additive_effect))
-    
+
   }
   
   LOD_list[[i]] <- ci_results
@@ -170,69 +193,6 @@ for (i in names(LOD_list)){
 }
 length(LOD_list)
 LOD_list 
-
-geneticMapList <- list()
-
-# Extract the genetic map for each chromosome
-for (chr in names(DG_F3_data$geno)) {
-  # Extract marker names and genetic distances for the current chromosome
-  markers <- names(DG_F3_data$geno[[chr]]$map)
-  distances <- DG_F3_data$geno[[chr]]$map
-  
-  # Create a data frame for the current chromosome
-  df <- data.frame(Marker = markers, GeneticDistance = distances)
-  
-  # Add the data frame to the list
-  geneticMapList[[chr]] <- df
-}
-geneticMapList[[1]]
-
-geneticMapList_tb <- bind_rows(geneticMapList, .id = "chr")%>%
-  select(c(1,3))%>%
-  rename(mid_pos = GeneticDistance, mid_chr = chr)%>%
-  mutate(mid_pos = as.double(mid_pos), trait = "Genetic distance")%>%
-  remove_rownames()
-
-###############
-
-LOD_tb <- bind_rows(LOD_list, .id = "trait")%>%
-  filter(trait != "leaf_mark_q") %>%
-  mutate(arrow_head = case_when(additive_effect < 0 ~ "first", additive_effect > 0 ~ "last"),
-         treat = str_split_i(trait, "_", 3))%>%
-  # mutate(trait = str_remove(str_remove(str_remove(trait, "_w_Control"), "_w_Drought"), "area_"))%>%
-  # mutate(trait = paste("S", str_split_i(trait, "_", 2), "_R", str_split_i(trait, "_", 3), "_", str_split_i(trait, "_", 1), sep = ""))%>%
-  mutate(trait = factor(trait))
-
-x_labels <- LOD_tb %>%
-  mutate(trait = str_remove(str_remove(str_remove(trait, "_w_Control"), "_w_Drought"), "area_"))%>%
-  mutate(trait = paste("S", str_split_i(trait, "_", 2), "_R", str_split_i(trait, "_", 3), "_", str_split_i(trait, "_", 1), sep = ""))%>%
-  pull(trait)
-
-geneticMapList_tb_s <- filter(geneticMapList_tb, mid_chr %in% LOD_tb$mid_chr)%>%
-  mutate(mid_chr = factor(mid_chr, levels = paste0("drTriRepe4Chr", 1:16)))
-
-write_csv(LOD_tb, "./data/dry_weight_log_LOD_tb_20240826.csv")
-
-p <- ggplot(data = LOD_tb, aes(x = trait, y = mid_pos))+
-  geom_line(data = geneticMapList_tb_s, color = "gray60")+
-  geom_point(data = geneticMapList_tb_s, shape = "-", size = 10, color = "gray40")+
-  geom_segment(data = filter(LOD_tb, arrow_head == "first"), aes(xend = trait, y = low_pos, yend = high_pos, color = treat),
-               arrow = arrow(type = "closed", length = unit(0.15, "inches"), ends = "first"), lineend = "butt", linewidth = 1,  show.legend = FALSE)+
-  geom_segment(data = filter(LOD_tb, arrow_head == "last"), aes(xend = trait, y = low_pos, yend = high_pos, color = treat),
-               arrow = arrow(type = "closed", length = unit(0.15, "inches"), ends = "last"), lineend = "butt", linewidth = 1, show.legend = FALSE)+
-  geom_point(aes(color = treat))+
-  scale_color_manual(values = c("#00BFC4", "#F8766D"))+
-  # scale_x_discrete(labels = c(x_labels[1:2], "", x_labels[3], "", x_labels[4],"",x_labels[5],"",x_labels[6]))+
-  facet_grid(.~mid_chr, scales = "free_x", space = "free_x")+
-  xlab("")+
-  ylab("Genetic distance (cM)")+
-  theme_minimal()+
-  theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.5), panel.grid.minor.x = element_blank(), panel.grid.major.y = element_blank(), legend.position = c(0.9, 0.9), legend.title = element_blank(), plot.background = element_rect(fill = "white", color = NA))
-
-p 
-ggsave("./figures/dry_weight_log_BLUP_p0.1_20240826.png", width = 6, height = 6)
-
-
 
 get_effect_plot <- function(cross_object = DG_F3_data, marker, Trt1, Trt2 = NULL, pos = mid_pos, lod = mid_lod, y_label = "pheno") {
   
@@ -293,7 +253,64 @@ get_effect_plot <- function(cross_object = DG_F3_data, marker, Trt1, Trt2 = NULL
 }
 
 
-for (i in 1:nrow(LOD_tb)){
-  p <- get_effect_plot(DG_F3_data, LOD_tb$mid_marker[[i]], Trt1 = LOD_tb$trait[[i]], pos = LOD_tb$mid_pos[[i]], lod = LOD_tb$mid_lod[[i]], y_label = "Dry weight BLUPs")
-  ggsave(paste("./figures/dry_weight_log_BLUP_p0.1_", LOD_tb$trait[[i]], "_",str_replace(LOD_tb$mid_marker[[i]], ":", "."), ".png", sep = ""), width = 5, height = 5)
+geneticMapList <- list()
+
+# Extract the genetic map for each chromosome
+for (chr in names(DG_F3_data$geno)) {
+  # Extract marker names and genetic distances for the current chromosome
+  markers <- names(DG_F3_data$geno[[chr]]$map)
+  distances <- DG_F3_data$geno[[chr]]$map
+  
+  # Create a data frame for the current chromosome
+  df <- data.frame(Marker = markers, GeneticDistance = distances)
+  
+  # Add the data frame to the list
+  geneticMapList[[chr]] <- df
 }
+geneticMapList[[1]]
+
+geneticMapList_tb <- bind_rows(geneticMapList, .id = "chr")%>%
+  select(c(1,3))%>%
+  rename(mid_pos = GeneticDistance, mid_chr = chr)%>%
+  mutate(mid_pos = as.double(mid_pos), trait = "Genetic distance")%>%
+  remove_rownames()
+
+###############
+
+
+LOD_tb <- bind_rows(LOD_list, .id = "trait")%>%
+  filter(trait != "leaf_mark_q") %>%
+  mutate(arrow_head = case_when(additive_effect < 0 ~ "first", additive_effect > 0 ~ "last"),
+         treat = str_split_i(trait, "_", 1))%>%
+  arrange(desc(treat))%>%
+  mutate(trait = factor(trait, levels = c(str_sort(c(unique(trait)), numeric = TRUE), "Genetic distance")))
+
+
+geneticMapList_tb_s <- filter(geneticMapList_tb, mid_chr %in% LOD_tb$mid_chr)%>%
+  mutate(mid_chr = factor(mid_chr, levels = paste0("drTriRepe4Chr", 1:16)))%>%
+  mutate(trait = factor(trait, levels = levels(LOD_tb$trait)))
+
+write_csv(LOD_tb, "./clover_drought/data/leaf_area_LOD_tb_20240825.csv")
+
+p <- ggplot(data = LOD_tb, aes(x = trait, y = mid_pos))+
+  geom_point(aes(color = treat))+
+  geom_segment(data = filter(LOD_tb, arrow_head == "first"), aes(xend = trait, y = low_pos, yend = high_pos, color = treat),
+               arrow = arrow(type = "closed", length = unit(0.15, "inches"), ends = "first"), lineend = "butt", linewidth = 1,  show.legend = FALSE)+
+  geom_segment(data = filter(LOD_tb, arrow_head == "last"), aes(xend = trait, y = low_pos, yend = high_pos, color = treat),
+               arrow = arrow(type = "closed", length = unit(0.15, "inches"), ends = "last"), lineend = "butt", linewidth = 1, show.legend = FALSE)+
+  geom_line(data = geneticMapList_tb_s, color = "gray60")+
+  geom_point(data = geneticMapList_tb_s, shape = "-", size = 10, color = "gray40")+
+  scale_color_manual(values = c("#00BFC4", "#F8766D"))+
+  # scale_x_discrete(labels = c(x_labels[1], "", x_labels[2:8], "", x_labels[9:11], "", x_labels[12:14], "", x_labels[15]))+
+  facet_grid(.~mid_chr, scales = "free_x",space = "free_x")+
+  xlab("")+
+  ylab("Genetic distance (cM)")+
+  theme_minimal()+
+  theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.5), panel.grid.minor.x = element_blank(), panel.grid.major.y = element_blank(), legend.position = c(0.9, 0.9), legend.title = element_blank(), plot.background = element_rect(fill = "white", color = NA))
+
+p  
+ggsave("./clover_drought/figures/leaf_area_raw_p0.1_20240826.png", width = 10, height = 6)
+
+
+#############################################
+
