@@ -1,0 +1,3 @@
+trait,low_marker,mid_marker,high_marker,low_chr,mid_chr,high_chr,low_pos,mid_pos,high_pos,low_lod,mid_lod,high_lod,additive_effect,arrow_head,treat
+shoot_w_Control,drTriRepe4Chr4:26123253,drTriRepe4Chr4:42683586,drTriRepe4Chr4:45658944,drTriRepe4Chr4,drTriRepe4Chr4,drTriRepe4Chr4,1449.1690065492899,1471.96314865976,1509.92664860013,3.5980677774980734,5.483516196213387,2.497601740030845,-0.03658879285851331,first,Control
+root_w_Control,drTriRepe4Chr4:26123253,drTriRepe4Chr4:42683586,drTriRepe4Chr4:45658944,drTriRepe4Chr4,drTriRepe4Chr4,drTriRepe4Chr4,1449.1690065492899,1471.96314865976,1509.92664860013,3.851526380117818,5.5481199068309905,2.2678034514333234,-0.014500932728455608,first,Control

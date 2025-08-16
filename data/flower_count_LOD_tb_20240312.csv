@@ -1,0 +1,3 @@
+trait,low_marker,mid_marker,high_marker,low_chr,mid_chr,high_chr,low_pos,mid_pos,high_pos,low_lod,mid_lod,high_lod,additive_effect,arrow_head,treat
+Drought,drTriRepe4Chr4:25066518,drTriRepe4Chr4:25539207,drTriRepe4Chr4:55748437,drTriRepe4Chr4,drTriRepe4Chr4,drTriRepe4Chr4,1355.56859152771,1373.6998329448,1935.75745100964,4.786712649827791,5.830802807090379,3.869138371554982,0.41584985758898546,last,Drought
+Drought,drTriRepe4Chr8:06314921,drTriRepe4Chr8:06327883,drTriRepe4Chr8:07832752,drTriRepe4Chr8,drTriRepe4Chr8,drTriRepe4Chr8,210.09107879351203,235.751802693559,284.136599395421,3.4385846511893305,5.109522434833366,3.415969999363483,-0.6169335084400316,first,Drought
