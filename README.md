@@ -13,7 +13,6 @@ Corresponding Author E-Mail: kolsen@wustl.edu
 
 This repository contains figure-generation scripts, processed input data, and selected result tables used for phenotypic, QTL, and RNA-seq analyses in the drought study.
 
-Repository structure
 clover_drought/
 ├── data/                  # processed input tables and supporting files
 │   ├── RNAseq/            # RNA-seq count matrix and orthogroup files
@@ -29,6 +28,8 @@ clover_drought/
 │   └── Figure5/
 ├── script/                # figure-generation scripts
 └── README.md
+
+
 Directory overview
 data/
 
